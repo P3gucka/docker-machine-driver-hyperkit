@@ -16,8 +16,9 @@ limitations under the License.
 package main
 
 import (
+	"docker-machine-driver-hyperkit/pkg/hyperkit"
+
 	"github.com/docker/machine/libmachine/drivers/plugin"
-	"github.com/machine-drivers/docker-machine-driver-hyperkit/pkg/hyperkit"
 )
 
 func main() {

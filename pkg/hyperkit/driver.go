@@ -29,15 +29,18 @@ import (
 	"syscall"
 	"time"
 
+	"regexp"
+
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
+	"github.com/docker/machine/libmachine/mcnutils"
 	"github.com/docker/machine/libmachine/state"
 	nfsexports "github.com/johanneswuerbach/nfsexports"
+
+	pkgdrivers "docker-machine-driver-hyperkit/pkg/drivers"
+
 	hyperkit "github.com/moby/hyperkit/go"
 	"github.com/pkg/errors"
-	pkgdrivers "github.com/machine-drivers/docker-machine-driver-hyperkit/pkg/drivers"
-	"regexp"
-	"github.com/docker/machine/libmachine/mcnutils"
 )
 
 const (
@@ -66,10 +69,10 @@ type Driver struct {
 	NFSShares      []string
 	NFSSharesRoot  string
 	UUID           string
-	BootKernel string
-	BootInitrd string
-	Initrd     string
-	Vmlinuz    string
+	BootKernel     string
+	BootInitrd     string
+	Initrd         string
+	Vmlinuz        string
 }
 
 func NewDriver(hostName, storePath string) *Driver {
@@ -78,6 +81,7 @@ func NewDriver(hostName, storePath string) *Driver {
 			SSHUser: "docker",
 		},
 		CommonDriver: &pkgdrivers.CommonDriver{},
+		DiskSize:     40000,
 	}
 }
 
@@ -107,6 +111,11 @@ func (d *Driver) Create() error {
 	}
 
 	return d.Start()
+}
+
+// GetSSHUsername change default root ssh user
+func (d *Driver) GetSSHUsername() string {
+	return "docker"
 }
 
 // DriverName returns the name of the driver
@@ -182,13 +191,13 @@ func (d *Driver) Start() error {
 
 	// TODO: handle the rest of our settings.
 	h.Kernel = d.ResolveStorePath(d.Vmlinuz)
-	h.Initrd =d.ResolveStorePath(d.Initrd)
+	h.Initrd = d.ResolveStorePath(d.Initrd)
 	h.VMNet = true
 	h.ISOImages = []string{d.ResolveStorePath(isoFilename)}
 	h.Console = hyperkit.ConsoleFile
-	h.CPUs = d.CPU
-	h.Memory = d.Memory
-	h.UUID = d.UUID
+	h.CPUs = 4
+	h.Memory = 8096
+	h.UUID = "11111111-1111-1111-1111-111111111111"
 
 	log.Infof("Using UUID %s", h.UUID)
 	mac, err := GetMACAddressFromUUID(h.UUID)
@@ -213,6 +222,15 @@ func (d *Driver) Start() error {
 
 	getIP := func() error {
 		var err error
+
+		st, err := d.GetState()
+		if err != nil {
+			return errors.Wrap(err, "get state")
+		}
+		if st == state.Error || st == state.Stopped {
+			return fmt.Errorf("hyperkit crashed! command line:\n  hyperkit %s", d.Cmdline)
+		}
+
 		d.IPAddress, err = GetIPAddressByMACAddress(mac)
 		if err != nil {
 			return &RetriableError{Err: err}
@@ -281,11 +299,11 @@ func (d *Driver) extractKernel(isoPath string) error {
 			return nil
 		})
 	}
-	
-	if  d.BootKernel == "" || d.BootInitrd == "" {
+
+	if d.BootKernel == "" || d.BootInitrd == "" {
 		err := fmt.Errorf("==== Can't extract Kernel and Ramdisk file ====")
 		return err
-		}
+	}
 
 	dest := d.ResolveStorePath(d.Vmlinuz)
 	log.Debugf("Extracting %s into %s", d.BootKernel, dest)
